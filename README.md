@@ -15,14 +15,18 @@ Dark mode theme
 Mobile-friendly design
 
 1. Get Groq API Key
+   
     Go to Groq's website
+   
     Sign up for an account
+   
     Navigate to API Keys section
+   
     Create a new API key and copy it
 
-2. Install Requirements
+3. Install Requirements
 
-3. Configure API Key
+4. Configure API Key
 Edit model.py and replace this line with your actual API key:
 GROQ_API_KEY = "your_api_key_here"
 
