@@ -15,13 +15,10 @@ Dark mode theme
 Mobile-friendly design
 
 1. Get Groq API Key
-Go to Groq's website
-
-Sign up for an account
-
-Navigate to API Keys section
-
-Create a new API key and copy it
+    Go to Groq's website
+    Sign up for an account
+    Navigate to API Keys section
+    Create a new API key and copy it
 
 2. Install Requirements
 
