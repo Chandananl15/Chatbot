@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat With MIMI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <!-- History/New Chat Button -->
+    <button id="menu-button" class="menu-button">
+        <i class="fas fa-clock-rotate-left"></i>
+    </button>
+
+    <!-- Main Chat Container -->
+    <div class="app-container">
+        <!-- Messages -->
+        <div id="chat-messages" class="chat-messages">
+            <div class="welcome-message">
+                <div class="welcome-icon"><i class="fas fa-robot"></i></div>
+                <h3>Chat With MIMI</h3>
+                <p>Ask anything</p>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="chat-input-container">
+            <div class="chat-input-box">
+                <input type="text" id="user-input" placeholder="Ask anything" autocomplete="off">
+                <button id="send-button"><i class="fas fa-paper-plane"></i></button>
+            </div>
+            <div class="disclaimer">
+                MIMI may produce inaccurate information
+            </div>
+        </div>
+    </div>
+
+    <!-- History Sidebar -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-actions">
+            <button id="new-chat"><i class="fas fa-plus"></i> New Chat</button>
+        </div>
+        <div class="chat-history" id="chat-history"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const chatMessages = document.getElementById('chat-messages');
+            const userInput = document.getElementById('user-input');
+            const sendButton = document.getElementById('send-button');
+            const menuButton = document.getElementById('menu-button');
+            const sidebar = document.getElementById('sidebar');
+            const newChatButton = document.getElementById('new-chat');
+            const chatHistory = document.getElementById('chat-history');
+            
+            let currentConversationId = 'conv_' + Math.random().toString(36).substr(2, 9);
+            let conversations = {
+                [currentConversationId]: [
+                    {"role": "system", "content": "You are MIMI, a helpful assistant."}
+                ]
+            };
+
+            // Toggle sidebar
+            menuButton.addEventListener('click', () => {
+                sidebar.classList.toggle('visible');
+            });
+
+            // Start new chat
+            newChatButton.addEventListener('click', () => {
+                currentConversationId = 'conv_' + Math.random().toString(36).substr(2, 9);
+                conversations[currentConversationId] = [
+                    {"role": "system", "content": "You are MIMI, a helpful assistant."}
+                ];
+                chatMessages.innerHTML = `
+                    <div class="welcome-message">
+                        <div class="welcome-icon"><i class="fas fa-robot"></i></div>
+                        <h3>Chat with MIMI</h3>
+                        <p>Ask anything</p>
+                    </div>
+                `;
+                sidebar.classList.remove('visible');
+            });
+
+            // Send message
+            function sendMessage() {
+                const message = userInput.value.trim();
+                if (!message) return;
+                
+                addMessage('user', message);
+                conversations[currentConversationId].push({"role": "user", "content": message});
+                userInput.value = '';
+                
+                // Remove welcome message if first user message
+                if (document.querySelector('.welcome-message')) {
+                    document.querySelector('.welcome-message').remove();
+                }
+                
+                // Show typing indicator
+                const typingId = 'typing-' + Date.now();
+                addMessage('assistant', '<div class="typing-indicator"><span></span><span></span><span></span></div>', typingId);
+                scrollToBottom();
+                
+                // Send to server
+                fetch('/chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        message: message,
+                        conversation_id: currentConversationId
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById(typingId)?.remove();
+                    streamResponse(data.response);
+                    conversations[currentConversationId].push({"role": "assistant", "content": data.response});
+                    updateHistory(currentConversationId, message);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    document.getElementById(typingId)?.remove();
+                    addMessage('assistant', 'Error: Please try again');
+                });
+            }
+
+            // Stream response word by word
+            function streamResponse(response) {
+                const words = response.split(' ');
+                let fullResponse = '';
+                const responseElement = addMessage('assistant', '');
+                
+                function streamWord(index) {
+                    if (index < words.length) {
+                        fullResponse += (index > 0 ? ' ' : '') + words[index];
+                        responseElement.querySelector('.message-text').textContent = fullResponse;
+                        scrollToBottom();
+                        setTimeout(() => streamWord(index + 1), 30);
+                    }
+                }
+                streamWord(0);
+            }
+
+            // Add message to chat
+            function addMessage(role, content, id = null) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${role}-message`;
+                if (id) messageDiv.id = id;
+                
+                messageDiv.innerHTML = `
+                    <div class="message-content">
+                        <div class="message-text">${content}</div>
+                    </div>
+                `;
+                
+                chatMessages.appendChild(messageDiv);
+                return messageDiv;
+            }
+
+            // Update chat history
+            function updateHistory(conversationId, preview) {
+                let historyItem = document.querySelector(`.history-item[data-id="${conversationId}"]`);
+                
+                if (!historyItem) {
+                    historyItem = document.createElement('div');
+                    historyItem.className = 'history-item';
+                    historyItem.dataset.id = conversationId;
+                    historyItem.innerHTML = `
+                        <div class="history-text">${preview.substring(0, 30)}${preview.length > 30 ? '...' : ''}</div>
+                        <button class="delete-history"><i class="fas fa-trash"></i></button>
+                    `;
+                    
+                    historyItem.addEventListener('click', (e) => {
+                        if (!e.target.closest('.delete-history')) {
+                            loadConversation(conversationId);
+                        }
+                    });
+                    
+                    historyItem.querySelector('.delete-history').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        deleteHistory(conversationId, historyItem);
+                    });
+                    
+                    chatHistory.prepend(historyItem);
+                } else {
+                    historyItem.querySelector('.history-text').textContent = 
+                        `${preview.substring(0, 30)}${preview.length > 30 ? '...' : ''}`;
+                }
+            }
+
+            // Load conversation from history
+            function loadConversation(conversationId) {
+                currentConversationId = conversationId;
+                chatMessages.innerHTML = '';
+                const messages = conversations[conversationId].slice(1);
+                messages.forEach(msg => addMessage(msg.role, msg.content));
+                scrollToBottom();
+                sidebar.classList.remove('visible');
+            }
+
+            // Delete history item
+            function deleteHistory(conversationId, element) {
+                delete conversations[conversationId];
+                element.remove();
+                if (conversationId === currentConversationId) {
+                    newChatButton.click(); // Start new chat if current was deleted
+                }
+            }
+
+            // Scroll to bottom
+            function scrollToBottom() {
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+
+            // Event listeners
+            sendButton.addEventListener('click', sendMessage);
+            userInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    sendMessage();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
